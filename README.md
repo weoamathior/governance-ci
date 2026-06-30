@@ -77,22 +77,24 @@ same-repo-action self-reference wrinkle and keeps the orchestration in one reada
 |---|---|
 | `LLM_API_KEY` | org **secret** |
 | `EVALUATOR_MODEL`, `GOVERNANCE_STANDARDS_REF` | org **variables** |
+| `GOVERNANCE_CI_REPO` / `GOVERNANCE_CI_REF` (optional) | org **variables** — engine `"owner/name"` and ref; default `<owner>/governance-ci` + `v1` |
 | `GOVERNANCE_STANDARDS_REPO` (optional, `"owner/name"`) | org **variable** — set only if the standards repo is renamed; defaults to `<owner>/governance-standards` |
 | Require `governance/gate` before merge | org **ruleset** (target repos by name pattern) |
 
 ## Renaming the repos
 
-The engine is rename-safe by design:
+Every cross-repo reference is **config, not code** — a `…_REPO` org variable with a sensible
+default — so a rename is a variable change, not a code hunt:
 
-- **This engine repo's name is never hardcoded** — the reusable workflows derive their own
-  `owner/repo` from `github.job_workflow_ref` to self-check-out. Rename this repo freely; the
-  only thing that must follow is the literal in each caller's `uses:` line (below).
-- **The standards repo's name is config, not code** — set the org variable
-  `GOVERNANCE_STANDARDS_REPO`. No workflow edits.
+- **Engine repo** → set org var `GOVERNANCE_CI_REPO` (`"owner/name"`); `GOVERNANCE_CI_REF` pins
+  its version (default `v1`). No workflow edits. (We do *not* self-derive these from
+  `github.job_workflow_ref` — it comes back **empty** on this runner, which silently fell the
+  checkout back to the caller repo; config vars are the reliable mechanism.)
+- **Standards repo** → set org var `GOVERNANCE_STANDARDS_REPO`. No workflow edits.
 - **Caller `uses:` lines are the one unavoidable literal.** GitHub forbids variables in
   `uses:`, so each consuming repo's caller (`examples/app-governance.yml` and the standards
   repo's `examples/standards-evals.yml`) names this engine repo literally. Those `>>> RENAME`
-  lines are the entire swap surface when you rename the engine.
+  lines are the entire code-level swap surface when you rename the engine.
 
 ## Testing
 
