@@ -1,0 +1,45 @@
+# Weekly governance version-drift report. Runs centrally in governance-ci against the org:
+# resolves every onboarded product repo's EFFECTIVE standards ref (repo-var override else
+# org default) and surfaces the deliberately-pinned canaries/laggards, so staleness stays
+# visible and intentional instead of becoming a silent coverage gap.
+#
+# Token: the default GITHUB_TOKEN cannot read org/repo Actions variables across the org, so
+# this needs GOVERNANCE_ORG_TOKEN — a fine-grained PAT or GitHub App token with read access
+# to org + repo administration (Variables) and contents. Same token class as the dismissal
+# team check. Set it as an org/repo secret before enabling.
+name: Governance — Drift Report
+
+on:
+  schedule:
+    - cron: "0 13 * * 1"   # Mondays 13:00 UTC
+  workflow_dispatch:
+    inputs:
+      var:
+        description: "Pinning variable to audit"
+        default: GOVERNANCE_STANDARDS_REF
+
+permissions:
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build drift report
+        env:
+          GH_TOKEN: ${{ secrets.GOVERNANCE_ORG_TOKEN }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -euo pipefail
+          python3 scripts/drift_report.py \
+            --var "${{ github.event.inputs.var || 'GOVERNANCE_STANDARDS_REF' }}" \
+            --out report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: drift-report
+          path: report.md

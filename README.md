@@ -96,6 +96,22 @@ default — so a rename is a variable change, not a code hunt:
   repo's `examples/standards-evals.yml`) names this engine repo literally. Those `>>> RENAME`
   lines are the entire code-level swap surface when you rename the engine.
 
+## Versioning & rollout
+
+Pin to **immutable tags via an org default variable, with per-repo override** — not a moving
+shared tag, and not 135 frozen per-repo pins:
+
+- Cut immutable release tags (`std-2026.06`, `engine-1.4.0`); never move them.
+- The **org** variable (`GOVERNANCE_STANDARDS_REF` / `GOVERNANCE_CI_REF`) holds the current tag
+  and is the default channel. **Promote = repoint it** (one auditable action, instant rollback).
+- A **repo-level** variable overrides the org one — use it to canary a preview tag on a few
+  repos, or to deliberately freeze a laggard.
+- Dormant repos with no override pick up the *current* default when next touched, so they don't
+  silently fall off new governance. `drift-report.yml` (weekly) lists the deliberately-pinned
+  divergent/redundant repos so staleness stays visible. Standards changes are gated by the
+  evals corpus before a tag is promotable. Keep the caller's `uses:@v1` a stable major; do
+  fine-grained rollout through the org vars.
+
 ## Testing
 
 Two layers, deliberately separate:
@@ -103,8 +119,8 @@ Two layers, deliberately separate:
 - **Engine unit tests** (`tests/`, run by `.github/workflows/tests.yml`) — fast, hermetic
   pytest over the deterministic logic: gate computation, dismissal matching + provenance,
   dismissal carry-forward by `stableKey`, the sticky-comment render/parse round-trip (incl.
-  the base64 `-->` defense), audit-record building, and the evals scoring/regression math.
-  No network, no `gh`, no API key. Run locally with `python -m pytest tests/ -q`.
+  the base64 `-->` defense), audit-record building, the evals scoring/regression math, and the
+  drift-report classification. No network, no `gh`, no API key. Run with `python -m pytest tests/ -q`.
 - **Standards regression corpus** (`governance-standards/evals/`) — the *live* model test:
   does the evaluator still flag the right things. Slow, paid, non-deterministic; it gates a
   prompt/standards change, not an engine change.
