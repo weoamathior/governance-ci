@@ -1,0 +1,61 @@
+# Reusable: honor `DISMISS STD-XXX: reason` PR comments. Called on issue_comment.
+# issue_comment workflows run from the caller's default branch, so the caller's thin
+# caller workflow must be on its default branch.
+name: Governance — Dismiss Finding
+
+on:
+  workflow_call: {}
+
+permissions:
+  pull-requests: write
+  statuses: write
+  contents: read
+
+jobs:
+  dismiss:
+    if: >
+      github.event.issue.pull_request &&
+      github.event.comment.user.type != 'Bot' &&
+      startsWith(github.event.comment.body, 'DISMISS ')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve engine ref
+        id: ci
+        run: echo "ref=${GITHUB_WORKFLOW_REF##*@}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout governance-ci engine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/governance-ci
+          ref: ${{ steps.ci.outputs.ref }}
+          path: .ci
+
+      - name: Authorize, parse, and dismiss
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.issue.number }}
+          ACTOR: ${{ github.event.comment.user.login }}
+          OWNER: ${{ github.repository_owner }}
+          BODY: ${{ github.event.comment.body }}
+          EVALUATOR_VERSION: ${{ vars.GOVERNANCE_STANDARDS_REF }}
+        run: |
+          set -euo pipefail
+          # --- Authority check (POC STUB) ---
+          # TODO(operational): replace owner-only with the tiered team-membership model
+          # from DISMISSAL-GOVERNANCE.md (tech-leads / fte-codeowners) via
+          #   GET /orgs/{org}/teams/{slug}/memberships/{user}
+          if [ "$ACTOR" != "$OWNER" ]; then
+            gh pr comment "$PR" --body "⛔ @$ACTOR is not authorized to dismiss governance findings (POC stub: owner only)."
+            echo "unauthorized: $ACTOR"; exit 0
+          fi
+          line="$(printf '%s' "$BODY" | head -1)"
+          if [[ "$line" =~ ^DISMISS[[:space:]]+(STD-[0-9]{3})([[:space:]]+([^:[:space:]]+))?[[:space:]]*:[[:space:]]*(.+)$ ]]; then
+            STD="${BASH_REMATCH[1]}"; FILE="${BASH_REMATCH[3]}"; REASON="${BASH_REMATCH[4]}"
+          else
+            gh pr comment "$PR" --body "⚠️ Couldn't parse that dismissal. Use: \`DISMISS STD-XXX: your reason\`."
+            exit 0
+          fi
+          HEAD_SHA="$(gh pr view "$PR" --json headRefOid -q .headRefOid)"
+          ARGS=(--pr "$PR" --sha "$HEAD_SHA" --standard "$STD" --reason "$REASON" --actor "$ACTOR" --role "repo-owner (POC stub)")
+          [ -n "${FILE:-}" ] && ARGS+=(--file "$FILE")
+          python3 .ci/scripts/governance_state.py dismiss "${ARGS[@]}"

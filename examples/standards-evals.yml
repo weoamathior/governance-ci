@@ -1,0 +1,17 @@
+# Copy this into the governance-standards repo as .github/workflows/evals.yml.
+# It gates policy PRs on the regression corpus: a standard/prompt/fixture change can't
+# merge (or be pinned and rolled out) until it passes its own evals.
+name: Standards Regression
+
+on:
+  pull_request:
+    paths:
+      - "standards/**"
+      - "evaluator/**"
+      - "evals/**"
+  workflow_dispatch: {}
+
+jobs:
+  evals:
+    uses: your-org/governance-ci/.github/workflows/standards-evals.yml@v1
+    secrets: inherit

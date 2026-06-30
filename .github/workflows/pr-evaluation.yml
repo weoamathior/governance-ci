@@ -1,0 +1,145 @@
+# Reusable: PR evaluation pipeline. Called by each product repo's thin caller.
+# Ported from the proven poc-ai-governance-app workflow; the only structural change is
+# that the scripts come from this repo (checked out at the caller-pinned ref into .ci)
+# instead of living in the product repo.
+name: Governance — PR Evaluation
+
+on:
+  workflow_call:
+    secrets:
+      LLM_API_KEY:
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  statuses: write
+
+env:
+  STANDARDS_REF: ${{ vars.GOVERNANCE_STANDARDS_REF }}
+
+jobs:
+  evaluate:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout product repo (the PR)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Resolve THIS reusable workflow's ref so we fetch the matching engine version.
+      - name: Resolve engine ref
+        id: ci
+        run: echo "ref=${GITHUB_WORKFLOW_REF##*@}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout governance-ci engine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/governance-ci
+          ref: ${{ steps.ci.outputs.ref }}
+          path: .ci
+
+      - name: Checkout governance standards (pinned)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/governance-standards
+          ref: ${{ env.STANDARDS_REF }}
+          path: .governance-standards
+
+      - name: Auto-approve check (RULE-*)
+        id: auto_approve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh pr view "$PR_NUMBER" --json files --jq '.files[].path' > changed_files.txt
+          matched_rule=""
+          for rule_file in .governance-standards/auto-approve-rules/RULE-*.md; do
+            [ -e "$rule_file" ] || continue
+            rule_id="$(basename "$rule_file" .md | cut -d- -f1-2)"
+            mapfile -t patterns < <(grep -oP '(?<=`)[^`]*\*\*[^`]*(?=`)' "$rule_file" || true)
+            [ "${#patterns[@]}" -eq 0 ] && continue
+            all_match=true
+            while IFS= read -r file; do
+              [ -n "$file" ] || continue
+              file_matched=false
+              for pat in "${patterns[@]}"; do
+                case "$file" in $pat) file_matched=true; break ;; esac
+                core="${pat//\*\*\//}"; core="${core//\/\*\*/}"; core="${core//\*/}"
+                if [ -n "$core" ] && [[ "$file" == *"$core"* ]]; then file_matched=true; break; fi
+              done
+              [ "$file_matched" = false ] && { all_match=false; break; }
+            done < changed_files.txt
+            [ "$all_match" = true ] && { matched_rule="$rule_id"; break; }
+          done
+          if [ -n "$matched_rule" ]; then
+            echo "matched=$matched_rule" >> "$GITHUB_OUTPUT"
+            gh pr comment "$PR_NUMBER" --body "✅ Auto-approved by **$matched_rule** (no LLM evaluation)."
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${{ github.event.pull_request.head.sha }}" \
+              -f state=success -f context=governance/gate -f "description=auto-approved by $matched_rule"
+          else
+            echo "matched=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Assemble evaluator context
+        if: steps.auto_approve.outputs.matched == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh pr diff "$PR_NUMBER" > pr.diff
+          cat .governance-standards/standards/STD-*.md > active_standards.md
+          cp .governance-standards/evaluator/pr-evaluation-prompt.md prompt_template.md
+
+      - name: Run LLM evaluation
+        if: steps.auto_approve.outputs.matched == ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.LLM_API_KEY }}
+          EVALUATOR_MODEL: ${{ vars.EVALUATOR_MODEL || 'claude-haiku-4-5' }}
+          EVALUATOR_VERSION: ${{ env.STANDARDS_REF }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          pip install --quiet anthropic
+          python3 .ci/scripts/evaluate.py
+          echo "findings: $(jq 'length' findings.json)"
+
+      - name: Post findings to PR
+        if: steps.auto_approve.outputs.matched == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          jq -c '.[]' findings.json | while IFS= read -r f; do
+            std="$(echo "$f" | jq -r '.standardId')"; sev="$(echo "$f" | jq -r '.severity')"
+            desc="$(echo "$f" | jq -r '.description')"; file="$(echo "$f" | jq -r '.file // empty')"
+            start="$(echo "$f" | jq -r '.lineRange.start // empty')"
+            body="[$std] severity: $sev
+          $desc
+          To dismiss: add a PR comment in the format DISMISS $std: your reason here"
+            if [ -n "$file" ] && [ -n "$start" ]; then
+              gh api --method POST "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/comments" \
+                -f body="$body" -f path="$file" -F line="$start" \
+                -f commit_id="${{ github.event.pull_request.head.sha }}" -f side="RIGHT" || \
+                gh pr comment "$PR_NUMBER" --body "$body"
+            else
+              gh pr comment "$PR_NUMBER" --body "$body"
+            fi
+          done
+
+      - name: Publish governance state (sticky comment + gate)
+        if: steps.auto_approve.outputs.matched == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 .ci/scripts/governance_state.py publish \
+            --pr "${{ github.event.pull_request.number }}" \
+            --sha "${{ github.event.pull_request.head.sha }}" \
+            --findings findings.json \
+            --target-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

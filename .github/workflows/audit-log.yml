@@ -1,0 +1,64 @@
+# Reusable: write the merge-time audit record to the product repo's governance-audit
+# branch (kept off the default branch, which is protected by the required gate check).
+name: Governance — Audit Log
+
+on:
+  workflow_call: {}
+
+permissions:
+  contents: write
+
+jobs:
+  record:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout product repo (default branch)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Resolve engine ref
+        id: ci
+        run: echo "ref=${GITHUB_WORKFLOW_REF##*@}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout governance-ci engine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/governance-ci
+          ref: ${{ steps.ci.outputs.ref }}
+          path: .ci
+
+      - name: Build audit record from the sticky comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 .ci/scripts/audit_record.py \
+            --pr "${{ github.event.pull_request.number }}" \
+            --merge-sha "${{ github.event.pull_request.merge_commit_sha }}" \
+            --merged-at "${{ github.event.pull_request.merged_at }}"
+
+      - name: Commit to the audit-ledger branch
+        run: |
+          set -euo pipefail
+          PR="${{ github.event.pull_request.number }}"
+          SHA="${{ github.event.pull_request.merge_commit_sha }}"
+          RECORD="audit-log/${PR}-${SHA}.json"
+          [ -f "$RECORD" ] || { echo "No record."; exit 0; }
+          cp "$RECORD" /tmp/record.json
+          git config user.name "governance-pipeline"
+          git config user.email "governance-pipeline@users.noreply.github.com"
+          LEDGER="governance-audit"
+          if git ls-remote --exit-code --heads origin "$LEDGER" >/dev/null 2>&1; then
+            git fetch origin "$LEDGER"; git checkout -f "$LEDGER"
+          else
+            git checkout --orphan "$LEDGER"; git rm -rf . >/dev/null 2>&1 || true
+          fi
+          mkdir -p audit-log
+          cp /tmp/record.json "$RECORD"
+          git add "$RECORD"
+          git diff --cached --quiet && { echo "already present"; exit 0; }
+          git commit -m "audit: PR #${PR} (${SHA})"
+          git push origin "$LEDGER"

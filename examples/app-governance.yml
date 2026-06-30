@@ -1,0 +1,27 @@
+# Copy this into each product repo as .github/workflows/governance.yml — the ENTIRE
+# per-repo footprint. No scripts, no logic; just a pinned reference to the central engine.
+# Config (LLM_API_KEY secret, EVALUATOR_MODEL / GOVERNANCE_STANDARDS_REF vars) comes from
+# org-level secrets/variables via `secrets: inherit`.
+name: AI Governance
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  issue_comment:
+    types: [created]
+
+jobs:
+  evaluate:
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    uses: your-org/governance-ci/.github/workflows/pr-evaluation.yml@v1
+    secrets: inherit
+
+  dismiss:
+    if: github.event_name == 'issue_comment'
+    uses: your-org/governance-ci/.github/workflows/dismiss-finding.yml@v1
+    secrets: inherit
+
+  audit:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    uses: your-org/governance-ci/.github/workflows/audit-log.yml@v1
+    secrets: inherit

@@ -1,0 +1,61 @@
+# Reusable: run the evaluator regression corpus against the standards repo's candidate
+# policy. Called by the standards repo on PRs touching standards / prompt / fixtures.
+# The corpus (fixtures + baseline) lives in the standards repo; the harness and the
+# evaluator engine come from THIS repo — so the corpus tests exactly the engine that runs
+# in production.
+name: Governance — Standards Regression
+
+on:
+  workflow_call:
+    secrets:
+      LLM_API_KEY:
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout standards repo (candidate policy + corpus)
+        uses: actions/checkout@v4
+
+      - name: Resolve engine ref
+        id: ci
+        run: echo "ref=${GITHUB_WORKFLOW_REF##*@}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout governance-ci engine
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/governance-ci
+          ref: ${{ steps.ci.outputs.ref }}
+          path: .ci
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run the regression corpus
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.LLM_API_KEY }}
+          EVALUATOR_MODEL: ${{ vars.EVALUATOR_MODEL || 'claude-haiku-4-5' }}
+        run: |
+          set -euo pipefail
+          pip install --quiet anthropic
+          python3 .ci/scripts/run_evals.py --live \
+            --standards-dir . \
+            --fixtures-dir evals/fixtures \
+            --baseline evals/baseline.json \
+            --out eval-report
+
+      - name: Post report
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          [ -f eval-report.md ] && gh pr comment "$PR_NUMBER" --body-file eval-report.md || \
+            gh pr comment "$PR_NUMBER" --body "Standards regression run produced no report."
