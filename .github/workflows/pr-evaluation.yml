@@ -28,10 +28,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Resolve THIS reusable workflow's ref so we fetch the matching engine version.
+      # Resolve THIS reusable workflow's ref (job_workflow_ref) so we fetch the matching
+      # engine version. (github.workflow_ref would be the caller's ref — wrong repo.)
       - name: Resolve engine ref
         id: ci
-        run: echo "ref=${GITHUB_WORKFLOW_REF##*@}" >> "$GITHUB_OUTPUT"
+        run: |
+          ref="${{ github.job_workflow_ref }}"
+          echo "ref=${ref##*@}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout governance-ci engine
         uses: actions/checkout@v4

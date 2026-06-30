@@ -24,7 +24,11 @@ jobs:
 
       - name: Resolve engine ref
         id: ci
-        run: echo "ref=${GITHUB_WORKFLOW_REF##*@}" >> "$GITHUB_OUTPUT"
+        # job_workflow_ref is THIS reusable workflow's ref (e.g. .../standards-evals.yml@refs/tags/v1).
+        # (github.workflow_ref would be the caller's ref — wrong repo.)
+        run: |
+          ref="${{ github.job_workflow_ref }}"
+          echo "ref=${ref##*@}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout governance-ci engine
         uses: actions/checkout@v4
