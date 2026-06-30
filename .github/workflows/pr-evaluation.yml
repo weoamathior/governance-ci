@@ -35,7 +35,11 @@ jobs:
         id: ci
         run: |
           full="${{ github.job_workflow_ref }}"
-          echo "DEBUG job_workflow_ref=[$full]"
+          echo "DEBUG ctx job_workflow_ref=[$full]"
+          echo "DEBUG env GITHUB_JOB_WORKFLOW_REF=[${GITHUB_JOB_WORKFLOW_REF:-}]"
+          echo "DEBUG env GITHUB_WORKFLOW_REF=[${GITHUB_WORKFLOW_REF:-}]"
+          env | grep -iE "workflow|job_" | sed 's/=.*/=<set>/' | sort
+          [ -n "$full" ] || full="${GITHUB_JOB_WORKFLOW_REF:-}"
           ref="${full##*@}"
           repo="${full%/.github/*}"
           echo "DEBUG parsed repo=[$repo] ref=[$ref]"
