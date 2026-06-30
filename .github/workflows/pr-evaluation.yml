@@ -28,25 +28,30 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Resolve THIS reusable workflow's ref (job_workflow_ref) so we fetch the matching
-      # engine version. (github.workflow_ref would be the caller's ref — wrong repo.)
-      - name: Resolve engine ref
+      # job_workflow_ref = OWNER/REPO/.github/workflows/<file>@<ref>. Derive BOTH this
+      # engine's repo and its ref from it, so the engine repo NAME is never hardcoded
+      # (rename-safe). (github.workflow_ref would be the caller's ref — wrong repo.)
+      - name: Resolve engine repo + ref
         id: ci
         run: |
-          ref="${{ github.job_workflow_ref }}"
-          echo "ref=${ref##*@}" >> "$GITHUB_OUTPUT"
+          full="${{ github.job_workflow_ref }}"
+          echo "ref=${full##*@}" >> "$GITHUB_OUTPUT"
+          path="${full%@*}"
+          echo "repo=${path%%/.github/*}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout governance-ci engine
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository_owner }}/governance-ci
+          repository: ${{ steps.ci.outputs.repo }}
           ref: ${{ steps.ci.outputs.ref }}
           path: .ci
 
       - name: Checkout governance standards (pinned)
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository_owner }}/governance-standards
+          # Standards repo name is CONFIG, not code: set org var GOVERNANCE_STANDARDS_REPO
+          # ("owner/name") to rename it with zero code changes. Default keeps the POC name.
+          repository: ${{ vars.GOVERNANCE_STANDARDS_REPO || format('{0}/governance-standards', github.repository_owner) }}
           ref: ${{ env.STANDARDS_REF }}
           path: .governance-standards
 

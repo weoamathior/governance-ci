@@ -2,6 +2,12 @@
 # per-repo footprint. No scripts, no logic; just a pinned reference to the central engine.
 # Config (LLM_API_KEY secret, EVALUATOR_MODEL / GOVERNANCE_STANDARDS_REF vars) comes from
 # org-level secrets/variables via `secrets: inherit`.
+#
+# >>> RENAME: replace `your-org/governance-ci` below with `<ORG>/<engine-repo-name>` (3x).
+# These three `uses:` lines are the ONLY place the engine repo name must appear in a
+# product repo — GitHub does not allow variables in `uses:`, so it is a literal. The `@v1`
+# is the engine release tag. (The engine self-derives its own repo internally; this caller
+# cannot, hence the literal.)
 name: AI Governance
 
 on:

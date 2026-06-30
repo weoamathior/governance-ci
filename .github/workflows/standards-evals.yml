@@ -22,18 +22,20 @@ jobs:
       - name: Checkout standards repo (candidate policy + corpus)
         uses: actions/checkout@v4
 
-      - name: Resolve engine ref
+      # job_workflow_ref = OWNER/REPO/.github/workflows/<file>@<ref>. Derive BOTH this
+      # engine's repo and its ref from it, so the engine repo NAME is never hardcoded.
+      - name: Resolve engine repo + ref
         id: ci
-        # job_workflow_ref is THIS reusable workflow's ref (e.g. .../standards-evals.yml@refs/tags/v1).
-        # (github.workflow_ref would be the caller's ref — wrong repo.)
         run: |
-          ref="${{ github.job_workflow_ref }}"
-          echo "ref=${ref##*@}" >> "$GITHUB_OUTPUT"
+          full="${{ github.job_workflow_ref }}"
+          echo "ref=${full##*@}" >> "$GITHUB_OUTPUT"
+          path="${full%@*}"
+          echo "repo=${path%%/.github/*}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout governance-ci engine
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository_owner }}/governance-ci
+          repository: ${{ steps.ci.outputs.repo }}
           ref: ${{ steps.ci.outputs.ref }}
           path: .ci
 

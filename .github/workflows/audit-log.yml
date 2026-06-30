@@ -19,16 +19,20 @@ jobs:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
 
-      - name: Resolve engine ref
+      # job_workflow_ref = OWNER/REPO/.github/workflows/<file>@<ref>. Derive BOTH this
+      # engine's repo and its ref from it, so the engine repo NAME is never hardcoded.
+      - name: Resolve engine repo + ref
         id: ci
         run: |
-          ref="${{ github.job_workflow_ref }}"
-          echo "ref=${ref##*@}" >> "$GITHUB_OUTPUT"
+          full="${{ github.job_workflow_ref }}"
+          echo "ref=${full##*@}" >> "$GITHUB_OUTPUT"
+          path="${full%@*}"
+          echo "repo=${path%%/.github/*}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout governance-ci engine
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository_owner }}/governance-ci
+          repository: ${{ steps.ci.outputs.repo }}
           ref: ${{ steps.ci.outputs.ref }}
           path: .ci
 

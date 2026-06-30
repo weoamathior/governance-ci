@@ -1,6 +1,10 @@
 # Copy this into the governance-standards repo as .github/workflows/evals.yml.
 # It gates policy PRs on the regression corpus: a standard/prompt/fixture change can't
 # merge (or be pinned and rolled out) until it passes its own evals.
+#
+# >>> RENAME: replace `your-org/governance-ci` below with `<ORG>/<engine-repo-name>`.
+# This single `uses:` line is the only engine-repo-name literal in the standards repo
+# (GitHub does not allow variables in `uses:`).
 name: Standards Regression
 
 on:
