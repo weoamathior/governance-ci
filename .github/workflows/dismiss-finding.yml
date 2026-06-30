@@ -47,17 +47,17 @@ jobs:
           # from DISMISSAL-GOVERNANCE.md (tech-leads / fte-codeowners) via
           #   GET /orgs/{org}/teams/{slug}/memberships/{user}
           if [ "$ACTOR" != "$OWNER" ]; then
-            gh pr comment "$PR" --body "⛔ @$ACTOR is not authorized to dismiss governance findings (POC stub: owner only)."
+            gh pr comment "$PR" -R "$GITHUB_REPOSITORY" --body "⛔ @$ACTOR is not authorized to dismiss governance findings (POC stub: owner only)."
             echo "unauthorized: $ACTOR"; exit 0
           fi
           line="$(printf '%s' "$BODY" | head -1)"
           if [[ "$line" =~ ^DISMISS[[:space:]]+(STD-[0-9]{3})([[:space:]]+([^:[:space:]]+))?[[:space:]]*:[[:space:]]*(.+)$ ]]; then
             STD="${BASH_REMATCH[1]}"; FILE="${BASH_REMATCH[3]}"; REASON="${BASH_REMATCH[4]}"
           else
-            gh pr comment "$PR" --body "⚠️ Couldn't parse that dismissal. Use: \`DISMISS STD-XXX: your reason\`."
+            gh pr comment "$PR" -R "$GITHUB_REPOSITORY" --body "⚠️ Couldn't parse that dismissal. Use: \`DISMISS STD-XXX: your reason\`."
             exit 0
           fi
-          HEAD_SHA="$(gh pr view "$PR" --json headRefOid -q .headRefOid)"
+          HEAD_SHA="$(gh pr view "$PR" -R "$GITHUB_REPOSITORY" --json headRefOid -q .headRefOid)"
           ARGS=(--pr "$PR" --sha "$HEAD_SHA" --standard "$STD" --reason "$REASON" --actor "$ACTOR" --role "repo-owner (POC stub)")
           [ -n "${FILE:-}" ] && ARGS+=(--file "$FILE")
           python3 .ci/scripts/governance_state.py dismiss "${ARGS[@]}"
