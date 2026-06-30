@@ -1,0 +1,24 @@
+# Unit tests for the engine scripts. Runs on every push/PR to governance-ci itself,
+# guarding the gate/dismissal/audit logic against regressions. Fully hermetic: no
+# network, no gh, no ANTHROPIC_API_KEY (the live model path is covered by the evals
+# harness in the standards repo).
+name: Engine Unit Tests
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet pytest
+      - run: python -m pytest tests/ -q

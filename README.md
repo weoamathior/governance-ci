@@ -79,6 +79,23 @@ same-repo-action self-reference wrinkle and keeps the orchestration in one reada
 | `EVALUATOR_MODEL`, `GOVERNANCE_STANDARDS_REF` | org **variables** |
 | Require `governance/gate` before merge | org **ruleset** (target repos by name pattern) |
 
+## Testing
+
+Two layers, deliberately separate:
+
+- **Engine unit tests** (`tests/`, run by `.github/workflows/tests.yml`) — fast, hermetic
+  pytest over the deterministic logic: gate computation, dismissal matching + provenance,
+  dismissal carry-forward by `stableKey`, the sticky-comment render/parse round-trip (incl.
+  the base64 `-->` defense), audit-record building, and the evals scoring/regression math.
+  No network, no `gh`, no API key. Run locally with `python -m pytest tests/ -q`.
+- **Standards regression corpus** (`governance-standards/evals/`) — the *live* model test:
+  does the evaluator still flag the right things. Slow, paid, non-deterministic; it gates a
+  prompt/standards change, not an engine change.
+
+The unit tests cover the engine's decision logic so a refactor can't silently open the gate;
+the corpus covers model behavior. The LLM call in `evaluate.py` and the `gh`/network helpers
+are intentionally out of unit scope (covered by the corpus and by real PR runs).
+
 ## Status: scaffold
 
 Real and consolidated: the four engine scripts (proven in the POC) and the four reusable
