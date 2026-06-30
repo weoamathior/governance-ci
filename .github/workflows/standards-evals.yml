@@ -22,21 +22,13 @@ jobs:
       - name: Checkout standards repo (candidate policy + corpus)
         uses: actions/checkout@v4
 
-      # job_workflow_ref = OWNER/REPO/.github/workflows/<file>@<ref>. Derive BOTH this
-      # engine's repo and its ref from it, so the engine repo NAME is never hardcoded.
-      - name: Resolve engine repo + ref
-        id: ci
-        run: |
-          full="${{ github.job_workflow_ref }}"
-          echo "ref=${full##*@}" >> "$GITHUB_OUTPUT"
-          path="${full%@*}"
-          echo "repo=${path%%/.github/*}" >> "$GITHUB_OUTPUT"
-
+      # Engine repo + ref are CONFIG, not code: org vars GOVERNANCE_CI_REPO / GOVERNANCE_CI_REF
+      # (defaults keep the POC name + v1). Renaming/re-pinning the engine = set a var.
       - name: Checkout governance-ci engine
         uses: actions/checkout@v4
         with:
-          repository: ${{ steps.ci.outputs.repo }}
-          ref: ${{ steps.ci.outputs.ref }}
+          repository: ${{ vars.GOVERNANCE_CI_REPO || format('{0}/governance-ci', github.repository_owner) }}
+          ref: ${{ vars.GOVERNANCE_CI_REF || 'v1' }}
           path: .ci
 
       - name: Set up Python

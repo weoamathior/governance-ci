@@ -28,31 +28,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      # job_workflow_ref = OWNER/REPO/.github/workflows/<file>@<ref>. Derive BOTH this
-      # engine's repo and its ref from it, so the engine repo NAME is never hardcoded
-      # (rename-safe). (github.workflow_ref would be the caller's ref — wrong repo.)
-      - name: Resolve engine repo + ref
-        id: ci
-        run: |
-          full="${{ github.job_workflow_ref }}"
-          echo "DEBUG ctx job_workflow_ref=[$full]"
-          echo "DEBUG env GITHUB_JOB_WORKFLOW_REF=[${GITHUB_JOB_WORKFLOW_REF:-}]"
-          echo "DEBUG env GITHUB_WORKFLOW_REF=[${GITHUB_WORKFLOW_REF:-}]"
-          env | grep -iE "workflow|job_" | sed 's/=.*/=<set>/' | sort
-          [ -n "$full" ] || full="${GITHUB_JOB_WORKFLOW_REF:-}"
-          ref="${full##*@}"
-          repo="${full%/.github/*}"
-          echo "DEBUG parsed repo=[$repo] ref=[$ref]"
-          if [ -z "$repo" ] || [ "$repo" = "$full" ]; then
-            echo "::error::could not derive engine repo from job_workflow_ref ([$full])"; exit 1
-          fi
-          { echo "repo=$repo"; echo "ref=$ref"; } >> "$GITHUB_OUTPUT"
-
+      # Engine repo + ref are CONFIG, not code: org vars GOVERNANCE_CI_REPO ("owner/name")
+      # and GOVERNANCE_CI_REF (tag/sha). Renaming or re-pinning the engine = set a var, zero
+      # workflow edits. Defaults keep the POC name + the v1 tag. (We can't self-derive these
+      # from github.job_workflow_ref — it is empty on this runner.)
       - name: Checkout governance-ci engine
         uses: actions/checkout@v4
         with:
-          repository: ${{ steps.ci.outputs.repo }}
-          ref: ${{ steps.ci.outputs.ref }}
+          repository: ${{ vars.GOVERNANCE_CI_REPO || format('{0}/governance-ci', github.repository_owner) }}
+          ref: ${{ vars.GOVERNANCE_CI_REF || 'v1' }}
           path: .ci
 
       - name: Checkout governance standards (pinned)
